@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+ <head>
+<meta charset="utf-8">
+
+  <title></title>
+<style>
+	body {
+		font-family: "Microsoft JhengHei", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+	    font-weight: 400;
+	    font-style: normal;
+	}
+	.map {
+		width: 400px;
+		height: 600px;
+	/*transform: perspective(800px) rotateX(-30deg);*/
+	}
+
+	text {
+		font-family: "Microsoft JhengHei";
+	}
+
+	#slider1, #slider2, #slider3 {
+		margin: 0.33em;
+		width: 100%;
+		max-width: 400px;
+	}
+
+	#slider-text {
+		margin: 1em;
+	}
+
+	table {
+		width: 100%;
+	}
+
+	iframe {
+		border: none;
+		width:100%;
+		height:100%;
+	}
+
+    .chart{
+        font-family: "Microsoft JhengHei";
+        font-size:0.9em;
+    }
+    .Bar {
+		color:white;
+        height:1em;
+        line-height:1em;
+        padding-right:1em;
+        margin-bottom:5px;
+        text-align:right;
+        margin-left:15em;
+    }		
+    .redBar {
+        background-color:pink;
+        margin-bottom:15px;
+    }
+
+    .blueBar {
+        background-color:gray;
+    }	
+    .label {
+        height:1em;
+        line-height:1em;
+        padding-right:1em;
+        float:left;
+        width:13em;
+        text-align:right;
+    }
+	
+	#slider-range-max {		
+	width : 300px;
+	margin-left:80px;
+	margin-bottom:30px;
+	border:0;
+	font-size:1.5em;	
+	}
+	
+	#amount {
+	border:0;
+	color:#f6931f;
+	margin-left:10px;
+	font-size:2em;
+	font-weight:bold;
+	width : 3em;
+	}
+	.wrapper div {
+		margin: 35px 0;
+	}
+
+	.wrapper {
+		width: 500px;
+		margin-left: 100px;
+		margin-right: 100px;
+	}
+
+</style>
+<link rel="stylesheet" type="text/css" href="http://thematicmapping.org/playground/d3/d3.slider/d3.slider.css">
+<link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+<script src="//code.jquery.com/jquery-1.10.2.js"></script>
+<script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+</head>
+
+<body>
+	<table>
+		<tr>
+			<td style="width:50px">Age:&nbsp;</td>
+			<td id="age-display">0-100</td>
+			<td><div id="slider1"></div></td>
+		</tr>
+		<tr>
+			<td style="width:50px">Year:&nbsp;</td>
+			<td id="year-display">95</td>
+			<td><div id="slider2"></div></td>
+			
+		</tr>
+		<tr>
+			<td style="width:50px">Display:&nbsp;</td>
+			<td id="gender-display" style="width:80px">total</td>
+			<td><div id="slider3"></div></td>
+			
+		</tr>
+		<script type="text/javascript">
+			$("#slider1").slider({
+				range: true,
+				min: 0,
+				max: 100,
+				step: 5,
+				values: [ 0, 100 ],
+				slide: function( event, ui ) {
+					$("#age-display").html(ui.values[0] + "-" + ui.values[1]);
+					refreshRange(ui.values[ 0 ], ui.values[ 1 ]);
+				}
+		    });
+
+		    $("#slider2").slider({
+				min: 95,
+				max: 97,
+				value: 95,
+				slide: function( event, ui ) {
+					d3.json((ui.value) + ".json", function(error, data){
+    					g_data = (data);
+    					// 
+    					var a = ($("#slider1").slider( "option", "values" ));
+    					refreshRange(a[0], a[1]);
+    					d3.csv("data/death." + ui.value + ".csv", draw);
+
+    					$('#year-display').html(ui.value);
+    				});
+				}
+		    });
+
+		    var g_type = "total";
+
+		    $("#slider3").slider({
+				min: 1,
+				max: 3,
+				value: 1,
+				slide: function( event, ui ) {
+					switch(ui.value) {
+						case 1:
+						g_type = "total";
+						break;
+						case 2:
+						g_type = "male";
+						break;
+						case 3:
+						g_type = "female";
+						break;
+					}
+
+					var a = ($("#slider1").slider( "option", "values" ));
+					$("#gender-display").html(g_type);
+					refreshRange(a[0], a[1]);
+				}
+		    });
+		</script>
+    </table>
+    <table>
+    	<tr>
+    	<td>
+    		<svg id="map" class="map"></svg>
+    	</td>
+    	<td style="width:100%" id="mate">
+    		<!-- <iframe src="mate.html"></iframe> -->
+    	</td>
+    	</tr>
+    </table>
+
+</body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="http://d3js.org/topojson.v1.min.js"></script>
+<!-- <script src="http://thematicmapping.org/playground/d3/d3.slider/d3.slider.js"></script> -->
+
+<script type="text/javascript" src="cities.js"></script>
+<script>
+	var g_data,g_topo,g_ps,g_ramp,g_start,g_end;
+	var g_death;
+
+	var refreshText = function(a, b) {
+		g_topo.features.forEach(function(e) {
+			e.properties.death = g_death[e.properties.C_Name];
+		});
+
+		var ramp = d3.scale.linear()
+	    .domain(d3.extent(g_topo.features, function(d) { return d.properties.death; }))
+	    .range(["#559ADF","#EE4D4D"]);
+
+	    g_ps.attr({
+	        fill: function(d) {
+	            return ramp(d.properties.death);
+	        }
+	    })
+	    
+	    d3.select("svg#map").selectAll("text").remove();
+		d3.select("svg#map").selectAll("text").data(g_topo.features).enter()
+	    .append("text")
+	    .text(function(d) {
+	    	if (offset[d.properties.C_Name] && offset[d.properties.C_Name].offlist) {
+	    		d3.select("svg#map").append("rect")
+	    		.attr('x', textOffset[d.properties.C_Name][0] + 50)
+	    		.attr('y', textOffset[d.properties.C_Name][1] - 13)
+	    		.attr('width', '30')
+	    		.attr('height', '15')
+	    		.attr('fill', ramp(d.properties.death));
+
+	    		return d.properties.C_Name + ":" + d.properties.death;
+	    	}
+	    	return d.properties.death;
+	    })
+	    .attr('x', function(d) {
+	    	// return textOffset[d.properties.C_Name][0] + 20;
+	    	return textOffset[d.properties.C_Name][0];
+	    })
+	    .attr('y', function(d) {
+	    	// return textOffset[d.properties.C_Name][1] + 10;
+	    	return textOffset[d.properties.C_Name][1];
+	    })
+	    .attr("font-family", "Tahoma")
+		.attr("font-size", "14px")
+		.attr("text-anchor", "middle")
+	    .attr("fill", function(d) {
+	    	if (offset[d.properties.C_Name] && offset[d.properties.C_Name].offlist) {
+	    		return "black";
+	    	}
+	    	return "white";
+	    });
+
+	    var td = 0;
+	    for (var i in g_death) td += g_death[i];
+
+	    d3.select("svg#map").append("text")
+	    	.text(td)
+	    	.attr("font-family", "Tahoma")
+			.attr("font-size", "24px")
+			.attr("text-anchor", "middle")
+	    	.attr("x", "338")
+	    	.attr("y", "425")
+	    	.attr("transform", "rotate(-70 338,415)");
+
+	    d3.select("svg#map").append("text")
+	    	.text(a + "-" + b + "歲")
+	    	.attr("font-family", "Tahoma")
+			.attr("font-size", "80px")
+			.attr("fill", "rgba(200, 200, 200, 0.5)")
+			.attr("text-anchor", "middle")
+	    	.attr("x", "200")
+	    	.attr("y", "300");
+	};
+
+	function refreshRange(a, b) {
+
+		var _start = parseInt(a / 5);
+		var _end = parseInt(b / 5) + 1;
+
+		if (isNaN(_start)) _start = 0;
+		if (isNaN(_end)) _end = 21;
+
+		g_death = {};
+
+		for(var j = 0; j < lookup.length; j++) {
+			g_death[lookup[j]] = 0
+			for(var i = _start; i < _end; i++) {
+				g_death[lookup[j]] += g_data[g_type][i][j];
+			}
+		}
+
+		refreshText(a, b);
+	}
+
+	d3.json("95.json", function(error, data){
+	    g_data = (data);
+
+	    d3.json("county.json", function (error, data) {
+		    g_topo = topo = topojson.feature(data, data.objects.County_MOI_1041215);
+		    var topo_backup = JSON.parse(JSON.stringify(topo));
+		    
+		    prj = d3.geo.mercator().center([123,24]).scale(8000);
+		    path = d3.geo.path().projection(prj);
+
+		    var iter = function(arr, city) {
+		        var calc = function() {
+		            var cx, cy, tx = 0, ty = 0;
+		            arr.forEach(function(e){ tx += e[0]; ty += e[1];})
+
+		            cx = tx / arr.length;
+		            cy = ty / arr.length;
+
+		            var scale = 1;
+		            var ox = 0;
+		            var oy = 0;
+		            // console.log(offset)
+		            if (offset[city] && !offset[city].offlist) {
+		                
+		                scale = offset[city].scale;
+		                ox = offset[city].translate[0];
+		                oy = offset[city].translate[1];
+		            }
+
+		            var pix = 50;
+
+		            arr.forEach(function(e, i){
+		                e[0] = (e[0] - cx) * scale + cx + ox;
+		                e[1] = (e[1] - cy) * scale + cy + oy;
+
+		                e[0] = Math.floor(e[0] * pix) / pix;
+		                e[1] = Math.floor(e[1] * pix) / pix;
+		            });
+
+		            // pass 1
+		            var i = 0;
+		            while (i < arr.length - 1) {
+		                var x1 = arr[i][0];
+		                var x2 = arr[i+1][0];
+		                var y1 = arr[i][1];
+		                var y2 = arr[i+1][1];
+
+		                if (x1 == x2 || y1 == y2)
+		                    i++;
+		                else {
+		                    if (x2 > x1 && y2 < y1)
+		                        arr.splice(i+1, 0, [x2, y1]);
+		                    else if (x2 > x1 && y2 > y1)
+		                        arr.splice(i+1, 0, [x1, y2]);
+		                    else if (x2 < x1 && y2 < y1)
+		                        arr.splice(i+1, 0, [x1, y2]);
+		                    else
+		                        arr.splice(i+1, 0, [x2, y1]);
+
+		                    i+=2;
+		                }
+		            }
+
+		            // pass 2
+		            i = 0;
+		            while (i < arr.length) {
+		                var x1 = arr[i][0];
+		                var x2 = arr[i+1 > arr.length - 1 ? i + 1 - arr.length : i+1][0];
+		                var x3 = arr[i+2 > arr.length - 1 ? i + 2 - arr.length : i+2][0];
+		                var y1 = arr[i][1];
+		                var y2 = arr[i+1 > arr.length - 1 ? i + 1 - arr.length : i+1][1];
+		                var y3 = arr[i+2 > arr.length - 1 ? i + 2 - arr.length : i+2][1];
+
+		                if(x1 == x3 && y1 == y3) {
+		                    arr.splice(i+1, 1);
+		                    i++;
+		                    continue;
+		                }
+
+
+		                i++;
+		            }
+
+		            // pass 3
+		            i = 0;
+		            while (i < arr.length - 2) {
+		                var x1 = arr[i][0];
+		                var x2 = arr[i+1][0];
+		                var x3 = arr[i+2][0];
+		                var y1 = arr[i][1];
+		                var y2 = arr[i+1][1];
+		                var y3 = arr[i+2][1];
+
+		                if (x1 == x2 && x2 == x3) {
+		                	arr.splice(i+1, 1);
+		                    i++;
+		                    continue;
+		                }
+
+		                if (y1 == y2 && y2 == y3) {
+		                	arr.splice(i+1, 1);
+		                    i++;
+		                    continue;
+		                }
+
+		                i++;
+		            }
+
+		            // if(cityBoundary[city]) {
+		            // 	//arr.length = 0;
+		            // 	console.log("d");
+		            // } else {
+		            // 	cityBoundary[city] = arr;
+		            // 	console.log(arr.length);
+		            // }
+		        }
+
+		        for(var i in arr) {
+		            if(arr[i].length == 2 && Number(arr[i][0]) == arr[i][0]) {
+		                calc();
+		                break;        
+		            } else {
+		                iter(arr[i], city);
+		            }
+		        }
+		    }
+
+		    g_ps = d3.select("svg#map").selectAll("path").data(topo.features, function(d) {
+		        // if (d.properties.Shape_Area < 0.1) console.log(d.properties.C_Name);
+		        // d.properties.death = (g_data.data[12][lookup.indexOf(d.properties.C_Name)]); //.reduce(function(a, b){return a + b;}));
+		        // console.log(d.properties.C_Name, d.properties.death)
+
+		        if (offset[d.properties.C_Name] && offset[d.properties.C_Name].offlist) {
+		        } else {
+		            iter(d.geometry.coordinates, d.properties.C_Name);
+		            return d.geometry.coordinates;
+		        }
+		    })
+		    .enter()
+		    .append("path").attr("d", path)
+		    .style('stroke', 'black')
+		    .style('stroke-width', '1')
+		    // .style("stroke-dasharray", ("3, 3"))
+		    .attr("city", function(d){return d.properties.C_Name})
+		    
+		    g_ps.append("title")
+		  	.text(function(d){return d.properties.C_Name});
+
+
+		    d3.select("svg#map").selectAll("path").sort(function (a, b) { 
+		        if (a.properties.Shape_Area > b.properties.Shape_Area) return -1;
+		        else return 1;
+		    });
+
+		    prj2 = d3.geo.mercator().center([125,28]).scale(2000);
+		    path2 = d3.geo.path().projection(prj2);
+
+		    d3.select("svg#map").selectAll("path").data(topo_backup.features, function(d) {
+		        return d.geometry.coordinates;
+		    })
+		    .enter()
+		    .append("path").attr("d", path2).attr("fill", "#ccc");
+
+			refreshRange(0, 100);
+		});
+	});
+</script> 
+<script>
+    function draw(data) {
+        "use strict";
+
+        console.log(data);
+		d3.select("body")
+				.select("div.chart").remove();
+		
+		d3.select("#mate")
+                .append("div")
+                .attr("class", "chart")
+                .selectAll(".line")
+                .data(data)
+                .enter()
+                .append("div")
+                .attr("class","line");
+
+        d3.selectAll(".line").append("div")
+                .attr("class","lineMale")
+                .append("div")
+                .attr("class","label")
+                .text(function(d){return "Male : " + d.Age});
+
+        d3.selectAll(".lineMale")
+                .append("div")
+                .attr("class","Bar blueBar")
+                .style("width", function(d){return d.Male/50 + "px"})
+                .text(function(d){return Math.round(d.Male)});
+
+        d3.selectAll(".line").append("div")
+                .attr("class","lineFeMale")
+                .append("div")
+                .attr("class","label")
+                .text(function(d){return "Female : " + d.Age});
+
+        d3.selectAll(".lineFeMale")
+                .append("div")
+                .attr("class","Bar redBar")
+                .style("width", function(d){return d.Female/50 + "px"})
+                .text(function(d){return Math.round(d.Female)});
+    }
+
+    d3.csv("data/death.95.csv", draw);
+</script>
+
+</html>
